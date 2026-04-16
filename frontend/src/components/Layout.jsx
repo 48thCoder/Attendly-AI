@@ -13,8 +13,8 @@ import {
   ChevronRight,
   Cpu,
   BookOpen,
+  LineChart,
   Bell,
-  Zap,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
@@ -29,7 +29,7 @@ const teacherNav = [
 
 const studentNav = [
   { name: "My Dashboard", path: "/my-attendance", icon: BookOpen },
-  { name: "Planning & Insights", path: "/analytics", icon: Zap },
+  { name: "Planning & Insights", path: "/analytics", icon: LineChart },
   { name: "Settings", path: "/settings", icon: Settings },
 ];
 
