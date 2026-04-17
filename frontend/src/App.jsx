@@ -11,7 +11,6 @@ import { Records } from './pages/Records';
 import { Students } from './pages/Students';
 import { Register } from './pages/Register';
 import { StudentDashboard } from './pages/StudentDashboard';
-import { AttendanceAnalytics } from './pages/AttendanceAnalytics';
 import { Settings } from './pages/Settings';
 import { NotFound } from './pages/NotFound';
 import { CustomCursor } from './components/CustomCursor';
@@ -71,9 +70,6 @@ function App() {
               } />
               <Route path="my-attendance" element={
                 <ProtectedRoute allowedRoles={['student']}><StudentDashboard /></ProtectedRoute>
-              } />
-              <Route path="analytics" element={
-                <ProtectedRoute allowedRoles={['student']}><AttendanceAnalytics /></ProtectedRoute>
               } />
               <Route path="settings" element={
                 <ProtectedRoute><Settings /></ProtectedRoute>

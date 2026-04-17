@@ -13,7 +13,6 @@ import {
   ChevronRight,
   Cpu,
   BookOpen,
-  LineChart,
   Bell,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
@@ -29,7 +28,6 @@ const teacherNav = [
 
 const studentNav = [
   { name: "My Dashboard", path: "/my-attendance", icon: BookOpen },
-  { name: "Planning & Insights", path: "/analytics", icon: LineChart },
   { name: "Settings", path: "/settings", icon: Settings },
 ];
 

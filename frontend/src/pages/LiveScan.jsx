@@ -3,55 +3,43 @@ import {
   Camera,
   Play,
   Square,
-  UserSearch,
+  Cpu,
   Zap,
   Clock,
   CheckCircle,
   XCircle,
   AlertTriangle,
   ShieldCheck,
-  ChevronLeft,
-  ChevronRight,
-  RefreshCw,
-  User,
-  Fingerprint,
-  Search,
-  UserPlus,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { scanAPI } from "../services/api";
 import { formatTime } from "../utils/helpers";
 import { Badge } from "../components/Badge";
 import toast from "react-hot-toast";
-import { FaceScanner } from "../face-api.js";
+
+
 
 const STATUS = {
   ready: {
-    label: "System Idle",
-    color: "text-gray-400",
-    bg: "bg-surfaceLight/50 border-surfaceLight",
-    icon: UserSearch,
+    label: "Ready",
+    color: "text-primary",
+    bg: "bg-primary/10 border-primary/30",
+    icon: Cpu,
   },
   scanning: {
-    label: "AI Processing...",
+    label: "Scanning...",
     color: "text-amber-400",
     bg: "bg-amber-400/10 border-amber-400/30",
     icon: Zap,
   },
   identified: {
-    label: "Student Identified",
+    label: "Identified",
     color: "text-emerald-400",
     bg: "bg-emerald-400/10 border-emerald-400/30",
     icon: CheckCircle,
   },
-  manual: {
-    label: "Manual Entry",
-    color: "text-blue-400",
-    bg: "bg-blue-400/10 border-blue-400/30",
-    icon: UserPlus,
-  },
   unrecognized: {
-    label: "Recognition Failed",
+    label: "Not Recognized",
     color: "text-red-400",
     bg: "bg-red-400/10 border-red-400/30",
     icon: XCircle,
@@ -61,393 +49,434 @@ const STATUS = {
 export const LiveScan = () => {
   const [scanning, setScanning] = useState(false);
   const [status, setStatus] = useState("ready");
-  const [modelsReady, setModelsReady] = useState(false);
+
   const [recentScans, setRecentScans] = useState([]);
   const [lastResult, setLastResult] = useState(null);
   const [scanLine, setScanLine] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [showManualSearch, setShowManualSearch] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  
-  const itemsPerPage = 6;
-  const totalPages = Math.ceil(recentScans.length / itemsPerPage);
-  const currentScans = recentScans.slice(
-    (currentPage - 1) * itemsPerPage,
-    currentPage * itemsPerPage
-  );
 
-  const handleFaceMatch = async (detections) => {
-    if (status === "identified" || status === "scanning") return;
+
+  const [faces, setFaces] = useState([]);
+  const [spoofWarning, setSpoofWarning] = useState(false);
+  const boxIntervalRef = useRef(null);
+  const intervalRef = useRef(null);
+
+  const generateRandomFaceBox = () => {
+    return {
+      id: Math.random(),
+      left: `${15 + Math.random() * 50}%`,
+      top: `${15 + Math.random() * 40}%`,
+      width: `${15 + Math.random() * 15}%`,
+      height: `${20 + Math.random() * 15}%`,
+    };
+  };
+
+  const runScan = async () => {
     setStatus("scanning");
     setScanLine(true);
+    setSpoofWarning(false);
+
+    setFaces([{ ...generateRandomFaceBox() }]);
+
     try {
       const res = await scanAPI.recognize("default");
       const result = res.data;
       if (result.recognized) {
         setStatus("identified");
         setLastResult(result);
-        logScan(result.student, detections[0].detection.score * 100);
-        toast.success(`✅ ${result.student.name} marked present`);
+        setRecentScans((prev) => [
+          {
+            id: Date.now(),
+            name: result.student.name,
+            roll: result.student.roll,
+            confidence: parseFloat(result.confidence),
+            time: result.time,
+            status: "present",
+          },
+          ...prev.slice(0, 9),
+        ]);
+        toast.success(
+          `✅ ${result.student.name} marked present (${result.confidence}%)`,
+        );
       } else {
         setStatus("unrecognized");
+        setLastResult(null);
+        if (parseFloat(result.confidence) < 50) {
+          setSpoofWarning(true);
+          toast.error("Warning: Potential Spoof Detected!", {
+            icon: "🚨",
+            duration: 3000,
+          });
+        } else {
+          toast.error("Face not recognized in database", {
+            icon: "⚠️",
+            duration: 2500,
+          });
+        }
       }
     } catch (err) {
-      console.error(err);
+      setStatus("ready");
     } finally {
       setScanLine(false);
-      setTimeout(() => setStatus("ready"), 3000);
     }
-  };
 
-  const handleManualMark = (student) => {
-    setStatus("manual");
-    setLastResult({ student, time: new Date().toISOString() });
-    logScan(student, 100, true);
-    setShowManualSearch(false);
-    setSearchQuery("");
-    toast.success(`✅ ${student.name} marked manually`);
-    setTimeout(() => setStatus("ready"), 3000);
-  };
-
-  const logScan = (student, confidence, isManual = false) => {
-    setRecentScans((prev) => [
-      {
-        id: Date.now(),
-        name: student.name,
-        roll: student.roll,
-        confidence: Math.round(confidence),
-        time: new Date().toISOString(),
-        status: "present",
-        isManual,
-      },
-      ...prev,
-    ]);
-    setCurrentPage(1);
+    setTimeout(() => {
+      if (intervalRef.current || scanning) setStatus("ready");
+      setFaces([]);
+      setSpoofWarning(false);
+    }, 3000);
   };
 
   const startContinuousScan = () => {
     setScanning(true);
-    setStatus("ready");
-    setShowManualSearch(false);
-    toast.success("AI Face Scanner Started");
+    runScan();
+    intervalRef.current = setInterval(runScan, 6000);
+
+    boxIntervalRef.current = setInterval(() => {
+      setFaces((prev) => {
+        if (prev.length === 0) return prev;
+        return prev.map((f) => ({
+          ...f,
+          left: `${parseFloat(f.left) + (Math.random() * 2 - 1)}%`,
+          top: `${parseFloat(f.top) + (Math.random() * 2 - 1)}%`,
+        }));
+      });
+    }, 1000);
   };
 
   const stopScan = () => {
     setScanning(false);
+    clearInterval(intervalRef.current);
+    clearInterval(boxIntervalRef.current);
+    intervalRef.current = null;
+    boxIntervalRef.current = null;
     setStatus("ready");
     setScanLine(false);
-    toast("Scanner Stopped", { icon: "⏸️" });
+    setFaces([]);
+    setSpoofWarning(false);
   };
 
-  const s = STATUS[status] || STATUS.ready;
+  useEffect(
+    () => () => {
+      clearInterval(intervalRef.current);
+      clearInterval(boxIntervalRef.current);
+    },
+    [],
+  );
+
+  const s = STATUS[status];
 
   return (
-    <div className="h-[calc(100vh-100px)] flex flex-col overflow-hidden">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-            <motion.h2
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="text-2xl font-playfair font-bold text-white tracking-tight"
-            >
-            Biometric Control Center
-            </motion.h2>
-            <p className="text-xs text-gray-500 mt-1 uppercase tracking-widest font-semibold flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-            Neural Engine v2.4 Active
-            </p>
-        </div>
-        <button 
-            onClick={() => {
-                if (scanning) stopScan();
-                setShowManualSearch(!showManualSearch);
-            }}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold uppercase tracking-wider transition-all ${showManualSearch ? 'bg-primary text-background border-primary shadow-lg shadow-primary/20' : 'bg-surfaceLight/50 text-gray-400 border-white/5 hover:text-primary hover:border-primary/30'}`}
+    <div className="page-container">
+      <div className="mb-2">
+        <motion.h2
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          className="text-2xl font-playfair font-bold text-white"
         >
-            <Search size={14} />
-            {showManualSearch ? 'Close Search' : 'Manual Entry'}
-        </button>
+          Live Face Scanner
+        </motion.h2>
+        <p className="text-sm text-gray-400 mt-1">
+          AI-powered real-time face recognition
+        </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 flex-1 min-h-0 overflow-hidden">
-        <div className="lg:col-span-3 flex flex-col min-h-0 space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-5">
+        <div className="lg:col-span-3 space-y-5">
           <motion.div
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="glass-card flex-1 p-5 relative overflow-hidden flex flex-col items-center justify-center min-h-[400px]"
+            initial={{ opacity: 0, scale: 0.98 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ delay: 0.15 }}
+            className="glass-card p-6 relative overflow-hidden"
           >
-            <AnimatePresence mode="wait">
-                {showManualSearch ? (
-                    <motion.div 
-                        key="search"
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className="w-full max-w-md space-y-6"
-                    >
-                        <div className="text-center mb-8">
-                            <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4 border border-primary/20">
-                                <Search size={32} className="text-primary" />
-                            </div>
-                            <h3 className="text-xl font-playfair font-bold text-white uppercase tracking-tight">Manual Override</h3>
-                            <p className="text-xs text-gray-500 mt-1 uppercase tracking-widest font-semibold">Search Student Registry</p>
-                        </div>
-                        <div className="relative group">
-                            <input 
-                                type="text" 
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="Enter Name or Roll Number..."
-                                className="w-full bg-background/60 border-2 border-surfaceLight rounded-2xl px-12 py-4 text-white placeholder-gray-600 focus:border-primary/50 focus:outline-none transition-all shadow-2xl"
-                            />
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-primary transition-colors" size={20} />
-                        </div>
-                        
-                        {searchQuery.length >= 2 && (
-                            <div className="bg-background/80 border border-white/5 rounded-2xl overflow-hidden shadow-2xl divide-y divide-white/5 max-h-[180px] overflow-y-auto custom-scrollbar">
-                                {/* Simulated Search Results */}
-                                {[
-                                    { name: "Aryan Sharma", roll: "CS2101", avatar: "https://i.pravatar.cc/150?u=aryan" },
-                                    { name: "Priya Singh", roll: "CS2105", avatar: "https://i.pravatar.cc/150?u=priya" }
-                                ].filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.roll.toLowerCase().includes(searchQuery.toLowerCase())).map(student => (
-                                    <button 
-                                        key={student.roll}
-                                        onClick={() => handleManualMark(student)}
-                                        className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-primary/5 transition-colors group"
-                                    >
-                                        <img src={student.avatar} className="w-10 h-10 rounded-xl object-cover border border-white/10" alt="" />
-                                        <div className="text-left flex-1">
-                                            <p className="text-sm font-bold text-white uppercase tracking-tight">{student.name}</p>
-                                            <p className="text-xs text-gray-500 font-mono">{student.roll}</p>
-                                        </div>
-                                        <UserPlus size={18} className="text-gray-700 group-hover:text-primary transition-colors" />
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </motion.div>
-                ) : (
-                    <motion.div 
-                        key="camera"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="relative mx-auto rounded-3xl overflow-hidden shadow-2xl border-4 border-surfaceLight w-full" 
-                        style={{ maxWidth: 500 }}
-                    >
-                        <div className="aspect-[4/3] bg-background relative">
-                            <FaceScanner 
-                            isScanning={scanning} 
-                            onMatchFound={handleFaceMatch}
-                            onModelsLoaded={() => setModelsReady(true)}
-                            />
-                            
-                            <AnimatePresence>
-                            {scanLine && (
-                                <motion.div
-                                initial={{ y: 0 }}
-                                animate={{ y: "100%" }}
-                                exit={{ opacity: 0 }}
-                                transition={{ duration: 2, ease: "linear", repeat: Infinity }}
-                                className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent top-0 z-10"
-                                style={{ boxShadow: "0 0 15px rgba(0, 255, 231, 0.9)" }}
-                                />
-                            )}
-                            </AnimatePresence>
-
-                            {scanning && (
-                                <div className="absolute inset-0 pointer-events-none border-[12px] border-transparent">
-                                    <div className={`absolute top-0 left-0 w-10 h-10 border-t-2 border-l-2 ${status === 'identified' ? 'border-emerald-400' : 'border-primary/50'}`} />
-                                    <div className={`absolute top-0 right-0 w-10 h-10 border-t-2 border-r-2 ${status === 'identified' ? 'border-emerald-400' : 'border-primary/50'}`} />
-                                    <div className={`absolute bottom-0 left-0 w-10 h-10 border-b-2 border-l-2 ${status === 'identified' ? 'border-emerald-400' : 'border-primary/50'}`} />
-                                    <div className={`absolute bottom-0 right-0 w-10 h-10 border-b-2 border-r-2 ${status === 'identified' ? 'border-emerald-400' : 'border-primary/50'}`} />
-                                </div>
-                            )}
-                        </div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-          </motion.div>
-
-          <div className="glass-card p-4 shrink-0">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div className="flex items-center gap-3">
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center border transition-colors ${modelsReady ? 'bg-primary/10 border-primary/20 text-primary' : 'bg-surfaceLight text-gray-600'}`}>
-                        <Fingerprint size={18} />
-                    </div>
-                    <div>
-                        <p className="text-xs font-bold text-white uppercase tracking-tight leading-none mb-1">Scanner Hardware</p>
-                        <p className="text-[10px] text-gray-500 uppercase font-semibold">{modelsReady ? 'Ready for Capture' : 'Warm-up in progress...'}</p>
-                    </div>
+            <div className="relative mx-auto" style={{ maxWidth: 380 }}>
+              <div
+                className={`relative aspect-[4/3] rounded-2xl bg-background/80 overflow-hidden border-2 transition-all duration-500 ${
+                  spoofWarning
+                    ? "border-red-500 shadow-[0_0_40px_rgba(239,68,68,0.3)]"
+                    : status === "scanning"
+                      ? "border-amber-400/60"
+                      : status === "identified"
+                        ? "border-emerald-400/60 shadow-[0_0_30px_rgba(52,211,153,0.2)]"
+                        : status === "unrecognized"
+                          ? "border-red-400/60"
+                          : "border-surfaceLight"
+                }`}
+              >
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center">
+                    <Camera size={48} className="text-gray-700 mx-auto mb-3" />
+                    <p className="text-gray-600 text-sm">Camera Feed</p>
+                    <p className="text-gray-700 text-xs mt-1">
+                      Main System Camera
+                    </p>
+                  </div>
                 </div>
+
+
+                <AnimatePresence>
+                  {faces.map((face) => (
+                    <motion.div
+                      key={face.id}
+                      initial={{ opacity: 0, scale: 0.8 }}
+                      animate={{
+                        opacity: 1,
+                        scale: 1,
+                        left: face.left,
+                        top: face.top,
+                        width: face.width,
+                        height: face.height,
+                      }}
+                      exit={{ opacity: 0, scale: 1.1 }}
+                      transition={{ duration: 0.4, ease: "easeOut" }}
+                      className={`absolute border-2 border-primary/70 bg-primary/10 rounded-lg pointer-events-none ${
+                        status === "identified"
+                          ? "!border-emerald-400 !bg-emerald-400/20"
+                          : status === "unrecognized"
+                            ? "!border-red-400 !bg-red-400/20"
+                            : ""
+                      }`}
+                      style={{
+                        boxShadow: "inset 0 0 10px rgba(0, 255, 231, 0.2)",
+                      }}
+                    >
+                      {status === "scanning" && (
+                        <div className="absolute -top-6 left-0 text-xs font-mono text-primary bg-background/80 px-1 py-0.5 rounded border border-primary/30">
+                          Tracking Face ID:{Math.floor(face.id * 1000)}
+                        </div>
+                      )}
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
+
+
+                <AnimatePresence>
+                  {spoofWarning && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: [0, 0.5, 0] }}
+                      transition={{ repeat: Infinity, duration: 1 }}
+                      className="absolute inset-0 bg-red-500 pointer-events-none"
+                      style={{ mixBlendMode: "overlay" }}
+                    />
+                  )}
+                </AnimatePresence>
+
+                {[
+                  "top-3 left-3 border-t-2 border-l-2 rounded-tl-lg",
+                  "top-3 right-3 border-t-2 border-r-2 rounded-tr-lg",
+                  "bottom-3 left-3 border-b-2 border-l-2 rounded-bl-lg",
+                  "bottom-3 right-3 border-b-2 border-r-2 rounded-br-lg",
+                ].map((cls, i) => (
+                  <div
+                    key={i}
+                    className={`absolute w-8 h-8 transition-colors duration-300 ${cls} ${
+                      spoofWarning
+                        ? "border-red-500"
+                        : status === "identified"
+                          ? "border-emerald-400"
+                          : status === "unrecognized"
+                            ? "border-red-400"
+                            : "border-primary"
+                    }`}
+                  />
+                ))}
+                <AnimatePresence>
+                  {scanLine && (
+                    <motion.div
+                      initial={{ y: 0 }}
+                      animate={{ y: "100%" }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 2, ease: "linear" }}
+                      className="absolute left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary to-transparent top-0 z-10"
+                      style={{ boxShadow: "0 0 12px rgba(0, 255, 231, 0.8)" }}
+                    />
+                  )}
+                </AnimatePresence>
+                <AnimatePresence>
+                  {status === "identified" && lastResult && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 flex items-end justify-center pb-4 z-20"
+                    >
+                      <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-transparent pointer-events-none" />
+                      <div className="text-center relative z-10">
+                        <p className="text-emerald-400 font-semibold">
+                          {lastResult.student?.name}
+                        </p>
+                        <p className="text-xs text-gray-400">
+                          {lastResult.confidence}% confidence
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                  {status === "unrecognized" && !spoofWarning && (
+                    <motion.div
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 flex items-center justify-center bg-red-500/10 z-20"
+                    >
+                      <div className="text-center">
+                        <XCircle
+                          size={40}
+                          className="text-red-400 mx-auto mb-2"
+                        />
+                        <p className="text-red-400 font-semibold text-sm">
+                          Not Recognized
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                  {spoofWarning && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0 }}
+                      className="absolute inset-0 flex items-center justify-center bg-red-900/60 z-20 backdrop-blur-sm"
+                    >
+                      <div className="text-center">
+                        <AlertTriangle
+                          size={48}
+                          className="text-red-500 mx-auto mb-3 animate-pulse"
+                        />
+                        <p className="text-red-100 font-bold text-lg">
+                          SPOOF DETECTED
+                        </p>
+                        <p className="text-red-300 text-xs mt-1">
+                          Manual verification required
+                        </p>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+                {status === "scanning" && (
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-0">
+                    <div className="w-24 h-24 border-2 border-primary/30 rounded-full animate-ping-slow" />
+                    <div className="absolute w-16 h-16 border-2 border-primary/50 rounded-full animate-spin-slow" />
+                  </div>
+                )}
+              </div>
+              {scanning && (
+                <div className="absolute -top-2 -right-2 flex items-center gap-1 z-30">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                  <span className="text-xs text-red-400 font-medium">LIVE</span>
+                </div>
+              )}
+            </div>
+            <div className="mt-5 flex items-center justify-center">
+              <div
+                className={`flex items-center gap-2.5 px-5 py-2.5 rounded-full border ${s.bg} transition-all duration-300`}
+              >
+                <s.icon
+                  size={16}
+                  className={`${s.color} ${status === "scanning" ? "animate-pulse" : ""}`}
+                />
+                <span className={`text-sm font-semibold ${s.color}`}>
+                  {s.label}
+                </span>
+              </div>
+            </div>
+          </motion.div>
+          <div className="glass-card p-5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+              <div className="flex-1 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+                  <ShieldCheck size={20} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">System Online</p>
+                  <p className="text-xs text-gray-500">Using integrated biometric sensor</p>
+                </div>
+              </div>
+              <div className="flex gap-3 sm:flex-col w-full sm:w-auto">
                 {!scanning ? (
-                  <button
-                    onClick={startContinuousScan}
-                    disabled={!modelsReady || showManualSearch}
-                    className="btn-primary w-full sm:w-auto px-6 py-2.5 rounded-xl flex items-center justify-center gap-2 group disabled:opacity-30"
-                  >
-                    {!modelsReady ? (
-                      <RefreshCw size={14} className="animate-spin" />
-                    ) : (
-                      <Play size={14} fill="currentColor" className="group-hover:scale-110 transition-transform" />
-                    )}
-                    <span className="text-xs font-bold uppercase tracking-wider">{!modelsReady ? 'Calibrating...' : 'Start Scanner'}</span>
-                  </button>
+                  <>
+                    <button
+                      onClick={runScan}
+                      disabled={status === "scanning"}
+                      className="btn-primary flex-1 sm:flex-none justify-center sm:justify-start disabled:opacity-50"
+                    >
+                      <Zap size={15} /> Single Scan
+                    </button>
+                    <button
+                      onClick={startContinuousScan}
+                      className="btn-secondary flex-1 sm:flex-none justify-center sm:justify-start"
+                    >
+                      <Play size={15} /> Auto Scan
+                    </button>
+                  </>
                 ) : (
                   <button
                     onClick={stopScan}
-                    className="w-full sm:w-auto px-6 py-2.5 bg-red-500/10 text-red-500 border border-red-500/20 rounded-xl flex items-center justify-center gap-2 hover:bg-red-500/20 float-animation transition-all"
+                    className="flex items-center gap-2 bg-red-500/15 text-red-400 border border-red-500/30 py-2.5 px-5 rounded-lg hover:bg-red-500/25 transition-colors font-semibold text-sm"
                   >
-                    <Square size={14} fill="currentColor" />
-                    <span className="text-xs font-bold uppercase tracking-wider">Stop Session</span>
+                    <Square size={15} fill="currentColor" /> Stop
                   </button>
                 )}
+              </div>
             </div>
           </div>
         </div>
-
-        <div className="lg:col-span-2 flex flex-col min-h-0 space-y-4">
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="glass-card p-5 border-l-4 border-primary shrink-0 min-h-[160px]"
-          >
-             <div className="flex items-center justify-between mb-4">
-                <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">Active Profile</h3>
-                <div className={`px-2.5 py-1 rounded-lg border text-[9px] font-black uppercase tracking-tighter transition-all ${s.bg} ${s.color}`}>
-                   <span className="flex items-center gap-1.5">
-                    <s.icon size={10} className={status === 'scanning' ? 'animate-spin' : ''} />
-                    {s.label}
-                   </span>
-                </div>
-             </div>
-
-             <div className="flex flex-col justify-center">
-                <AnimatePresence mode="wait">
-                    {(status === "identified" || status === "manual") && lastResult ? (
-                        <motion.div
-                            key="identified"
-                            initial={{ opacity: 0, scale: 0.95 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            exit={{ opacity: 0, scale: 0.95 }}
-                            className="flex items-center gap-4"
-                        >
-                            <img 
-                                src={lastResult.student.avatar} 
-                                className="w-16 h-16 rounded-2xl object-cover border-2 border-primary/30 shadow-xl" 
-                                alt="" 
-                            />
-                            <div className="flex-1 min-w-0">
-                                <h4 className="text-lg font-bold text-white tracking-tight leading-none truncate uppercase">{lastResult.student.name}</h4>
-                                <p className="text-xs text-primary font-mono font-bold mt-1.5">{lastResult.student.roll}</p>
-                                <div className="mt-2.5 flex items-center gap-3">
-                                    <div className="bg-background/40 px-2 py-1 rounded-lg border border-white/5">
-                                        <p className="text-[8px] text-gray-500 uppercase font-black leading-none">Score</p>
-                                        <p className="text-[10px] font-bold text-emerald-400 mt-1">{status === 'manual' ? '100%' : '98.4%'}</p>
-                                    </div>
-                                    <div className="bg-background/40 px-2 py-1 rounded-lg border border-white/5 flex-1">
-                                        <p className="text-[8px] text-gray-500 uppercase font-black leading-none">Entry Type</p>
-                                        <p className={`text-[10px] font-bold uppercase tracking-tighter mt-1 truncate ${status === 'manual' ? 'text-blue-400' : 'text-emerald-400'}`}>
-                                            {status === 'manual' ? 'Manual' : 'System Match'}
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-                        </motion.div>
-                    ) : (
-                        <motion.div
-                            key="placeholder"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 0.5 }}
-                            exit={{ opacity: 0 }}
-                            className="flex flex-col items-center justify-center text-center py-4 border-2 border-dashed border-white/5 rounded-2xl"
-                        >
-                            <User size={24} className="text-gray-700 mb-2" />
-                            <p className="text-[9px] text-gray-600 font-bold uppercase tracking-widest">
-                                {status === 'scanning' ? 'Neural Match in progress...' : 'Detection Pending...'}
-                            </p>
-                        </motion.div>
-                    )}
-                </AnimatePresence>
-             </div>
-          </motion.div>
-
+        <div className="lg:col-span-2">
           <motion.div
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ delay: 0.2 }}
-            className="glass-card p-5 flex-1 flex flex-col min-h-0 overflow-hidden"
+            className="glass-card p-5 h-full"
           >
-            <div className="flex items-center justify-between mb-4 shrink-0">
-              <h3 className="text-sm font-bold text-white uppercase tracking-tight">Recent Activity Log</h3>
-              <span className="text-[10px] font-black text-primary bg-primary/10 px-2 py-0.5 rounded border border-primary/20 uppercase">
-                {recentScans.length} Entries
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">
+                Recent Scans
+              </h3>
+              <span className="text-xs text-gray-500 bg-surfaceLight px-2 py-0.5 rounded-full">
+                {recentScans.length} scans
               </span>
             </div>
 
-            <div className="flex-1 min-h-0 overflow-y-auto px-1 -mx-1 custom-scrollbar">
-              {recentScans.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-gray-700 opacity-20 italic">
-                  <Clock size={20} className="mb-2" />
-                  <p className="text-[10px] uppercase font-bold tracking-widest">No logs yet</p>
-                </div>
-              ) : (
-                <div className="space-y-2 pb-4">
-                  <AnimatePresence mode="popLayout" initial={false}>
-                    {currentScans.map((scan) => (
-                      <motion.div
-                        key={scan.id}
-                        layout
-                        initial={{ opacity: 0, scale: 0.95 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        exit={{ opacity: 0, scale: 0.95 }}
-                        className={`flex items-center gap-3 p-2.5 bg-background/40 rounded-xl border hover:border-primary/20 transition-all ${scan.isManual ? 'border-blue-500/20' : 'border-white/5'}`}
-                      >
-                        <div className={`w-8 h-8 rounded-lg border flex items-center justify-center shrink-0 ${scan.isManual ? 'bg-blue-500/10 border-blue-500/20 text-blue-400' : 'bg-emerald-500/10 border-emerald-500/10 text-emerald-400'}`}>
-                          {scan.isManual ? <UserPlus size={14} /> : <CheckCircle size={14} />}
+            {recentScans.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-48 text-gray-600">
+                <Clock size={32} className="mb-3 opacity-40" />
+                <p className="text-sm">No scans yet</p>
+                <p className="text-xs mt-1">Press Scan to begin</p>
+              </div>
+            ) : (
+              <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-24rem)] pr-2">
+                <AnimatePresence initial={false}>
+                  {recentScans.map((scan) => (
+                    <motion.div
+                      key={scan.id}
+                      initial={{ opacity: 0, x: 20, height: 0 }}
+                      animate={{ opacity: 1, x: 0, height: "auto" }}
+                      exit={{ opacity: 0, x: -20, height: 0 }}
+                      className="flex items-center gap-3 p-3 bg-background/60 rounded-xl border border-surfaceLight"
+                    >
+                      <div className="w-9 h-9 rounded-lg bg-emerald-500/15 border border-emerald-500/20 flex items-center justify-center flex-shrink-0">
+                        <CheckCircle size={16} className="text-emerald-400" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-white truncate">
+                          {scan.name}
+                        </p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-gray-500 font-mono">
+                            {scan.roll}
+                          </span>
+                          <span className="text-xs text-primary">
+                            {scan.confidence}%
+                          </span>
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[11px] font-bold text-white truncate uppercase tracking-tight">
-                            {scan.name}
-                          </p>
-                          <p className="text-[9px] text-gray-500 font-mono mt-0.5">
-                            {scan.roll} · <span className={scan.isManual ? 'text-blue-400/70' : 'text-primary/70'}>{scan.isManual ? 'Manual Overide' : `${scan.confidence}% Match`}</span>
-                          </p>
-                        </div>
-                        <div className="text-right shrink-0">
-                          <p className="text-[9px] text-gray-500 font-bold">
-                            {formatTime(scan.time)}
-                          </p>
-                          <div className="mt-1 scale-75 origin-right">
-                             <Badge status={scan.status} />
-                          </div>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-                </div>
-              )}
-            </div>
-
-            {totalPages > 1 && (
-              <div className="mt-3 flex items-center justify-between pt-3 border-t border-surfaceLight/20 shrink-0">
-                <button
-                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  disabled={currentPage === 1}
-                  className="p-1 rounded-lg hover:bg-surfaceLight text-gray-400 disabled:opacity-20 transition-colors"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <span className="text-[9px] text-gray-500 font-black uppercase tracking-widest">
-                  {currentPage} of {totalPages}
-                </span>
-                <button
-                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={currentPage === totalPages}
-                  className="p-1 rounded-lg hover:bg-surfaceLight text-gray-400 disabled:opacity-20 transition-colors"
-                >
-                  <ChevronRight size={16} />
-                </button>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <p className="text-xs text-gray-500">
+                          {formatTime(scan.time)}
+                        </p>
+                        <Badge status={scan.status} />
+                      </div>
+                    </motion.div>
+                  ))}
+                </AnimatePresence>
               </div>
             )}
           </motion.div>

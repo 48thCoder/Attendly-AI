@@ -1,11 +1,10 @@
+
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Upload, Camera, UserCheck, ArrowLeft, User, Mail, Hash, Building, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { studentsAPI } from '../services/api';
 import toast from 'react-hot-toast';
-import * as faceapi from 'face-api.js';
-import { loadModels } from '../face-api.js/faceApiLoader';
 
 const DEPARTMENTS = ['Computer Science', 'Electronics', 'Mechanical', 'Civil', 'Chemical'];
 
@@ -13,46 +12,31 @@ const WebcamCapture = ({ onCapture }) => {
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const [streamActive, setStreamActive] = useState(false);
-  const [modelsLoaded, setModelsLoaded] = useState(false);
 
   useEffect(() => {
     let stream = null;
-    const init = async () => {
+    const startCamera = async () => {
       try {
-        await loadModels();
-        setModelsLoaded(true);
         stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user', width: 640, height: 480 } });
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           setStreamActive(true);
         }
       } catch (err) {
-        toast.error('AI Camera Initialization Failed.');
+        toast.error('Could not access camera. Please check permissions.');
       }
     };
 
-    init();
+    startCamera();
     return () => {
       if (stream) stream.getTracks().forEach(track => track.stop());
     };
   }, []);
 
-  const capture = async () => {
+  const capture = () => {
     const video = videoRef.current;
-    if (!video || !modelsLoaded) return;
-
-    const detection = await faceapi
-      .detectSingleFace(video, new faceapi.TinyFaceDetectorOptions())
-      .withFaceLandmarks()
-      .withFaceDescriptor();
-
-    if (!detection) {
-      toast.error("No face detected! Please look directly at the camera.");
-      return;
-    }
-
     const canvas = canvasRef.current;
-    if (canvas) {
+    if (video && canvas) {
       const context = canvas.getContext('2d');
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
@@ -60,8 +44,8 @@ const WebcamCapture = ({ onCapture }) => {
       
       canvas.toBlob((blob) => {
         const previewUrl = canvas.toDataURL('image/jpeg');
-        onCapture(blob, previewUrl, Array.from(detection.descriptor));
-        toast.success('AI Face Biometrics Captured!');
+        onCapture(blob, previewUrl);
+        toast.success('AI Face Profile Captured!');
       }, 'image/jpeg', 0.9);
     }
   };
@@ -71,13 +55,13 @@ const WebcamCapture = ({ onCapture }) => {
       <video ref={videoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
       <canvas ref={canvasRef} className="hidden" />
       
-      {streamActive && modelsLoaded && (
+      {streamActive && (
         <>
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div className="w-48 h-60 border-2 border-primary border-dashed rounded-[2rem] relative">
               <div className="absolute inset-0 border border-primary/20 rounded-[2rem] animate-pulse" />
               <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-primary text-background px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
-                AI Alignment
+                AI Scanning
               </div>
             </div>
           </div>
@@ -87,18 +71,16 @@ const WebcamCapture = ({ onCapture }) => {
               onClick={capture}
               className="btn-primary shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
             >
-              <Camera size={16} /> Enroll Student Biometrics
+              <Camera size={16} /> Capture Student Face
             </button>
           </div>
         </>
       )}
       
-      {(!streamActive || !modelsLoaded) && (
+      {!streamActive && (
         <div className="absolute inset-0 flex flex-col items-center justify-center bg-background/80">
           <div className="w-10 h-10 border-4 border-primary/30 border-t-primary rounded-full animate-spin mb-3" />
-          <p className="text-sm text-gray-400">
-            {!modelsLoaded ? "Initializing AI Engine..." : "Activating Camera..."}
-          </p>
+          <p className="text-sm text-gray-400">Initializing AI Camera...</p>
         </div>
       )}
     </div>
@@ -107,11 +89,12 @@ const WebcamCapture = ({ onCapture }) => {
 
 export const Register = () => {
   const navigate = useNavigate();
+  const fileRef = useRef();
   const [form, setForm] = useState({ name: '', roll: '', email: '', department: 'Computer Science' });
   const [photo, setPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
-  const [fingerprint, setFingerprint] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [mode, setMode] = useState('upload'); 
   const [errors, setErrors] = useState({});
 
   const validate = () => {
@@ -119,9 +102,18 @@ export const Register = () => {
     if (!form.name.trim()) e.name = 'Name is required';
     if (!form.roll.trim()) e.roll = 'Roll number is required';
     if (!form.email.trim() || !/\S+@\S+\.\S+/.test(form.email)) e.email = 'Valid email is required';
-    if (!photo || !fingerprint) e.photo = 'AI face capture is mandatory';
+    if (!photo) e.photo = 'Student photo is required';
     setErrors(e);
     return Object.keys(e).length === 0;
+  };
+
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { toast.error('Please upload an image file'); return; }
+    setPhoto(file);
+    setPhotoPreview(URL.createObjectURL(file));
+    setErrors(prev => ({ ...prev, photo: null }));
   };
 
   const handleSubmit = async (e) => {
@@ -129,8 +121,8 @@ export const Register = () => {
     if (!validate()) return;
     setLoading(true);
     try {
-      await studentsAPI.register({ ...form, photo, fingerprint });
-      toast.success(`Student ${form.name} registered with Biometrics! 🎉`);
+      await studentsAPI.register({ ...form, photo });
+      toast.success(`Student ${form.name} registered successfully! 🎉`);
       navigate('/students');
     } catch {
       toast.error('Registration failed. Please try again.');
@@ -155,48 +147,80 @@ export const Register = () => {
         </button>
         <div>
           <motion.h2 initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="text-2xl font-playfair font-bold text-white">
-            Biometric Enrollment
+            Register Student
           </motion.h2>
-          <p className="text-sm text-gray-400 mt-0.5 ml-0">Mandatory AI face scan for secure attendance</p>
+          <p className="text-sm text-gray-400 mt-0.5 ml-0">Add a new student and capture their face</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} noValidate className="space-y-5">
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="glass-card p-6">
-          <h3 className="text-lg font-semibold text-white mb-5 flex items-center gap-2">
-            <Camera size={16} className="text-primary" /> AI Face Profile
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Camera size={16} className="text-primary" /> Face Registration
           </h3>
-
-          <div className="relative overflow-hidden rounded-xl border-2 border-surfaceLight bg-background/50">
-              {photoPreview ? (
-                <div className="p-6 text-center space-y-4">
-                  <div className="relative inline-block">
-                    <img src={photoPreview} alt="Captured" className="w-48 h-48 rounded-2xl object-cover mx-auto border-4 border-primary/20 shadow-xl shadow-primary/5" />
-                    <div className="absolute -top-2 -right-2 bg-emerald-500 text-white p-1 rounded-full border-2 border-background">
-                      <UserCheck size={14} />
-                    </div>
-                  </div>
-                  <div>
-                    <p className="text-primary font-bold text-sm">Face Scan Successful ✓</p>
-                    <p className="text-xs text-gray-500 mt-1">Biometric vector generated & attached</p>
-                  </div>
-                  <button 
-                    type="button" 
-                    onClick={() => { setPhoto(null); setPhotoPreview(null); setFingerprint(null); }}
-                    className="btn-secondary w-full justify-center gap-2"
-                  >
-                    <RefreshCw size={14} /> Reset & Retake
-                  </button>
-                </div>
-              ) : (
-                <WebcamCapture onCapture={(blob, preview, descriptor) => {
-                    setPhoto(blob);
-                    setPhotoPreview(preview);
-                    setFingerprint(descriptor);
-                    setErrors(prev => ({ ...prev, photo: null }));
-                }} />
-              )}
+          <div className="flex gap-2 mb-5">
+            <button type="button" onClick={() => setMode('upload')}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${mode === 'upload' ? 'bg-primary text-background' : 'bg-surfaceLight text-gray-400 hover:text-white'}`}>
+              <Upload size={14} className="inline mr-1.5" />Upload Photo
+            </button>
+            <button type="button" onClick={() => setMode('capture')}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${mode === 'capture' ? 'bg-primary text-background' : 'bg-surfaceLight text-gray-400 hover:text-white'}`}>
+              <Camera size={14} className="inline mr-1.5" />Capture Photo
+            </button>
           </div>
+
+          {mode === 'upload' ? (
+            <div>
+              <div
+                onClick={() => fileRef.current?.click()}
+                className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-200 ${
+                  photoPreview ? 'border-primary/40 bg-primary/5' :
+                  errors.photo ? 'border-red-500/40 hover:border-red-400/60' :
+                  'border-surfaceLight hover:border-primary/40 hover:bg-primary/5'
+                }`}
+              >
+                {photoPreview ? (
+                  <div className="space-y-3">
+                    <img src={photoPreview} alt="Preview" className="w-32 h-32 rounded-xl object-cover mx-auto border-2 border-primary/30" />
+                    <p className="text-primary text-sm font-medium">Photo selected ✓</p>
+                    <p className="text-xs text-gray-500">Click to change</p>
+                  </div>
+                ) : (
+                  <div>
+                    <Upload size={36} className="text-gray-600 mx-auto mb-3" />
+                    <p className="text-gray-300 text-sm font-medium">Click to upload student photo</p>
+                    <p className="text-gray-500 text-xs mt-1">JPG, PNG — Max 10MB</p>
+                  </div>
+                )}
+              </div>
+              <input type="file" ref={fileRef} accept="image/*" onChange={handleFile} className="hidden" />
+            </div>
+          ) : (
+            <div className="relative overflow-hidden rounded-xl border-2 border-surfaceLight bg-background/50">
+                {photoPreview && mode === 'capture' ? (
+                  <div className="p-6 text-center space-y-4">
+                    <img src={photoPreview} alt="Captured" className="w-48 h-48 rounded-2xl object-cover mx-auto border-4 border-primary/20 shadow-xl shadow-primary/5" />
+                    <div>
+                      <p className="text-primary font-bold text-sm">Face Captured Successfully ✓</p>
+                      <p className="text-xs text-gray-500 mt-1">AI profile generated from this frame</p>
+                    </div>
+                    <button 
+                      type="button" 
+                      onClick={() => { setPhoto(null); setPhotoPreview(null); }}
+                      className="btn-secondary w-full justify-center gap-2"
+                    >
+                      <RefreshCw size={14} /> Retake Photo
+                    </button>
+                  </div>
+                ) : (
+                  <WebcamCapture onCapture={(blob, preview) => {
+                      setPhoto(blob);
+                      setPhotoPreview(preview);
+                      setErrors(prev => ({ ...prev, photo: null }));
+                  }} />
+                )}
+            </div>
+          )}
           {errors.photo && <p className="text-red-400 text-xs mt-2">{errors.photo}</p>}
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }} className="glass-card p-6">
