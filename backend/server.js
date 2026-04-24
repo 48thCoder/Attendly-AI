@@ -23,7 +23,7 @@ const corsOptions = {
     'http://127.0.0.1:5173',
     'http://localhost:5174', // in case the port bumped
     'http://127.0.0.1:5174',
-    'https://attendly-ai.vercel.app/'
+    'https://attendly-ai.vercel.app'
   ],
   credentials: true
 };
