@@ -11,6 +11,7 @@ import { Records } from './pages/Records';
 import { Students } from './pages/Students';
 import { Register } from './pages/Register';
 import { StudentDashboard } from './pages/StudentDashboard';
+import { StudentProfile } from './pages/StudentProfile';
 import { AttendanceAnalytics } from './pages/AttendanceAnalytics';
 import { Settings } from './pages/Settings';
 import { NotFound } from './pages/NotFound';
@@ -23,7 +24,7 @@ const NotificationWrapper = () => {
 
   return (
     <Toaster
-      position={isLoginPage ? "top-right" : "top-center"}
+      position="top-center"
       toastOptions={{
         duration: 3500,
         style: {
@@ -65,6 +66,9 @@ function App() {
               } />
               <Route path="students" element={
                 <ProtectedRoute allowedRoles={['teacher']}><Students /></ProtectedRoute>
+              } />
+              <Route path="students/:id" element={
+                <ProtectedRoute allowedRoles={['teacher']}><StudentProfile /></ProtectedRoute>
               } />
               <Route path="students/register" element={
                 <ProtectedRoute allowedRoles={['teacher']}><Register /></ProtectedRoute>

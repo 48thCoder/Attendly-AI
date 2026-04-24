@@ -30,16 +30,14 @@ export const Records = () => {
 
   useEffect(() => {
     const fetch = async () => {
+      if (filter === "custom" && (!customStart || !customEnd)) {
+        setRecords([]);
+        return;
+      }
       setLoading(true);
       try {
-        const res = await recordsAPI.getRecords(filter);
-        let data = res.data;
-        if (filter === "custom" && customStart && customEnd) {
-          data = data.filter(
-            (r) => r.date >= customStart && r.date <= customEnd,
-          );
-        }
-        setRecords(data);
+        const res = await recordsAPI.getRecords(filter, customStart, customEnd);
+        setRecords(res.data);
       } catch {
         toast.error("Failed to load records");
       } finally {
@@ -234,7 +232,7 @@ export const Records = () => {
                 <tr className="border-b border-surfaceLight bg-surfaceLight/30">
                   {[
                     "Date",
-                    "Class",
+                    "Activity",
                     "Present",
                     "Absent",
                     "Attendance Rate",
@@ -260,7 +258,7 @@ export const Records = () => {
                     <td className="py-4 px-5 text-gray-300 font-medium">
                       {formatDate(rec.date)}
                     </td>
-                    <td className="py-4 px-5 text-white">{rec.class}</td>
+                    <td className="py-4 px-5 text-white">Daily check-in</td>
                     <td className="py-4 px-5">
                       <span className="text-emerald-400 font-semibold">
                         {rec.present}

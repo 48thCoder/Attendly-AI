@@ -212,21 +212,21 @@ export const StudentDashboard = () => {
                     <div className="flex-1 h-1.5 bg-surfaceLight rounded-full overflow-hidden">
                       <motion.div
                         initial={{ width: 0 }}
-                        animate={{ width: `${sub.pct}%` }}
+                        animate={{ width: `${sub.percentage}%` }}
                         transition={{
                           duration: 1,
                           ease: "easeOut",
                           delay: 0.4,
                         }}
-                        className={`h-full rounded-full ${sub.pct >= 85 ? "bg-emerald-400" : sub.pct >= 75 ? "bg-amber-400" : "bg-red-400"}`}
+                        className={`h-full rounded-full ${sub.percentage >= 85 ? "bg-emerald-400" : sub.percentage >= 75 ? "bg-amber-400" : "bg-red-400"}`}
                       />
                     </div>
                     <div className="w-24 flex items-center justify-between gap-3 text-right">
-                         <span className={`text-xs font-semibold ${sub.pct >= 85 ? "text-emerald-400" : sub.pct >= 75 ? "text-amber-400" : "text-red-400"}`}>
-                            {sub.pct}%
+                         <span className={`text-xs font-semibold ${sub.percentage >= 85 ? "text-emerald-400" : sub.percentage >= 75 ? "text-amber-400" : "text-red-400"}`}>
+                            {sub.percentage}%
                         </span>
                         <span className="text-[10px] font-mono text-gray-500">
-                            {sub.attended}/{sub.total}
+                            {sub.present}/{sub.total}
                         </span>
                     </div>
                   </div>

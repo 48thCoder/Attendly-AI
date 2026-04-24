@@ -1,7 +1,6 @@
-
-import { createContext, useState, useEffect } from 'react';
-import { authAPI } from '../services/api';
-import toast from 'react-hot-toast';
+import { createContext, useState, useEffect } from "react";
+import { authAPI } from "../services/api";
+import toast from "react-hot-toast";
 
 export const AuthContext = createContext();
 
@@ -10,10 +9,9 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    
-    const storedUser = localStorage.getItem('user');
-    const token = localStorage.getItem('token');
-    
+    const storedUser = sessionStorage.getItem("user");
+    const token = sessionStorage.getItem("token");
+
     if (storedUser && token) {
       setUser(JSON.parse(storedUser));
     }
@@ -24,30 +22,45 @@ export const AuthProvider = ({ children }) => {
     try {
       const response = await authAPI.login(email, password);
       const { token, user } = response.data;
-      
-      localStorage.setItem('token', token);
-      localStorage.setItem('user', JSON.stringify(user));
-      
+
+      sessionStorage.setItem("token", token);
+      sessionStorage.setItem("user", JSON.stringify(user));
+
       setUser(user);
-      toast.success('Logged in successfully', {
-        icon: '✅',
+      toast.success("Logged in successfully", {
+        icon: "✅",
       });
       return user;
     } catch (error) {
-      toast.error('Login failed. Check credentials.');
+      console.error("Login Error details:", error.response || error);
       throw error;
     }
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
     setUser(null);
-    toast.success('Logged out');
+    toast.success("Logged out");
+  };
+
+  const updateUser = (userData) => {
+    const updatedUser = { ...user, ...userData };
+    setUser(updatedUser);
+    sessionStorage.setItem("user", JSON.stringify(updatedUser));
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, loading, isAuthenticated: !!user }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        login,
+        logout,
+        updateUser,
+        loading,
+        isAuthenticated: !!user,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

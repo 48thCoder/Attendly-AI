@@ -8,7 +8,7 @@ import { SkeletonCard } from '../components/LoadingSpinner';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 
-const DEPARTMENTS = ['All', 'Computer Science', 'Electronics', 'Mechanical'];
+const DEPARTMENTS = ['All', 'CSE Core', 'CSE (AI)', 'CSE (AIML)', 'AIML', 'CSE (DS)', 'CS (IT)', 'CSE (IOT)', 'CSE (H)'];
 
 export const Students = () => {
   const [students, setStudents] = useState([]);
@@ -24,8 +24,13 @@ export const Students = () => {
   }, []);
 
   const handleDelete = async (id) => {
-    setStudents(prev => prev.filter(s => s.id !== id));
-    toast.success('Student removed');
+    try {
+      await studentsAPI.delete(id);
+      setStudents(prev => prev.filter(s => s.id !== id));
+      toast.success('Student removed');
+    } catch {
+      toast.error('Failed to remove student');
+    }
   };
 
   const filtered = students.filter(s => {

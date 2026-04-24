@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Upload, Camera, UserCheck, ArrowLeft, User, Mail, Hash, Building, RefreshCw } from 'lucide-react';
+import { Upload, Camera, UserCheck, ArrowLeft, User, Mail, Hash, Building, RefreshCw, UserPlus } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { studentsAPI } from '../services/api';
 import toast from 'react-hot-toast';
 import * as faceapi from 'face-api.js';
 import { loadModels } from '../face-api.js/faceApiLoader';
 
-const DEPARTMENTS = ['Computer Science', 'Electronics', 'Mechanical', 'Civil', 'Chemical'];
+const DEPARTMENTS = ['CSE Core', 'CSE (AI)', 'CSE (AIML)', 'AIML', 'CSE (DS)', 'CS (IT)', 'CSE (IOT)', 'CSE (H)'];
 
 const WebcamCapture = ({ onCapture }) => {
   const videoRef = useRef(null);
@@ -107,11 +107,12 @@ const WebcamCapture = ({ onCapture }) => {
 
 export const Register = () => {
   const navigate = useNavigate();
-  const [form, setForm] = useState({ name: '', roll: '', email: '', department: 'Computer Science' });
+  const [form, setForm] = useState({ name: '', roll: '', email: '', department: 'CSE Core' });
   const [photo, setPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [fingerprint, setFingerprint] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [successData, setSuccessData] = useState(null);
   const [errors, setErrors] = useState({});
 
   const validate = () => {
@@ -129,11 +130,26 @@ export const Register = () => {
     if (!validate()) return;
     setLoading(true);
     try {
-      await studentsAPI.register({ ...form, photo, fingerprint });
-      toast.success(`Student ${form.name} registered with Biometrics! 🎉`);
-      navigate('/students');
-    } catch {
-      toast.error('Registration failed. Please try again.');
+      const response = await studentsAPI.register({
+        name: form.name,
+        roll: form.roll,
+        email: form.email,
+        department: form.department,
+        avatar: photoPreview,
+        faceDescriptor: fingerprint
+      });
+      
+      setSuccessData({
+        ...response.data.student,
+        password: response.data.temporaryPassword
+      });
+      
+      toast.success(`Student ${form.name} registered with Biometrics! 🎉`, {
+        duration: 5000
+      });
+    } catch (err) {
+      console.error(err);
+      toast.error(err.response?.data?.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -146,6 +162,82 @@ export const Register = () => {
 
   const inputClass = (field) =>
     `input-field ${errors[field] ? 'border-red-500/60 focus:ring-red-500 focus:border-red-500' : ''}`;
+
+  if (successData) {
+    return (
+      <div className="page-container max-w-2xl">
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="glass-card p-8 text-center"
+        >
+          <div className="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center mx-auto mb-6 border border-emerald-500/30">
+            <UserCheck size={40} className="text-emerald-500" />
+          </div>
+          
+          <h2 className="text-3xl font-playfair font-bold text-white mb-2">Registration Successful!</h2>
+          <p className="text-gray-400 mb-8 text-lg">Student has been enrolled with biometric profile.</p>
+          
+          <div className="bg-background/50 rounded-2xl border border-surfaceLight p-6 mb-8 text-left space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Student Name</p>
+                <p className="text-white font-semibold">{successData.name}</p>
+              </div>
+              <div>
+                <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Roll Number</p>
+                <p className="text-white font-semibold">{successData.roll}</p>
+              </div>
+            </div>
+            
+            <div>
+              <p className="text-[10px] text-gray-500 uppercase tracking-widest mb-1">Login Email</p>
+              <p className="text-white font-semibold">{successData.email}</p>
+            </div>
+            
+            <div className="pt-4 border-t border-surfaceLight/50">
+              <p className="text-[10px] text-primary uppercase tracking-widest mb-1 font-bold">Temporary Password</p>
+              <div className="flex items-center justify-between bg-primary/10 border border-primary/20 rounded-lg p-3">
+                <code className="text-primary font-mono font-bold text-lg">{successData.password}</code>
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(successData.password);
+                    toast.success('Password copied to clipboard!');
+                  }}
+                  className="p-2 hover:bg-primary/20 rounded-md transition-colors text-primary"
+                  title="Copy Password"
+                >
+                  <Upload size={16} className="rotate-180" />
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-500 mt-2 italic">Please share these credentials with the student for their first login.</p>
+            </div>
+          </div>
+          
+          <div className="flex flex-col sm:flex-row gap-3">
+            <button 
+              onClick={() => navigate('/students')}
+              className="btn-secondary flex-1 justify-center py-3"
+            >
+              Back to Students
+            </button>
+            <button 
+              onClick={() => {
+                setSuccessData(null);
+                setForm({ name: '', roll: '', email: '', department: 'CSE Core' });
+                setPhoto(null);
+                setPhotoPreview(null);
+                setFingerprint(null);
+              }}
+              className="btn-primary flex-1 justify-center py-3"
+            >
+              <UserPlus size={18} /> Register Another
+            </button>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="page-container max-w-2xl">

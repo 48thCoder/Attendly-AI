@@ -19,7 +19,7 @@ import {
   UserPlus,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { scanAPI } from "../services/api";
+import { scanAPI, attendanceAPI, studentsAPI } from "../services/api";
 import { formatTime } from "../utils/helpers";
 import { Badge } from "../components/Badge";
 import toast from "react-hot-toast";
@@ -68,6 +68,26 @@ export const LiveScan = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [showManualSearch, setShowManualSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [allStudents, setAllStudents] = useState([]);
+  const [recentSeen, setRecentSeen] = useState(new Map()); // Map<id, timestamp>
+  
+  useEffect(() => {
+    const init = async () => {
+      try {
+        const [studentsRes, attendanceRes] = await Promise.all([
+          studentsAPI.getAll(),
+          attendanceAPI.getToday()
+        ]);
+        setAllStudents(studentsRes.data);
+        if (attendanceRes.data.recent) {
+          setRecentScans(attendanceRes.data.recent);
+        }
+      } catch (err) {
+        console.error("Initialization failed", err);
+      }
+    };
+    init();
+  }, []);
   
   const itemsPerPage = 6;
   const totalPages = Math.ceil(recentScans.length / itemsPerPage);
@@ -81,13 +101,32 @@ export const LiveScan = () => {
     setStatus("scanning");
     setScanLine(true);
     try {
-      const res = await scanAPI.recognize("default");
+      const res = await scanAPI.recognize(Array.from(detections[0].descriptor));
       const result = res.data;
+      
       if (result.recognized) {
+        const studentId = result.student.id;
+        const now = Date.now();
+        const lastSeen = recentSeen.get(studentId) || 0;
+
+        // 15 second cooldown for the same person
+        if (now - lastSeen < 15000) {
+            setStatus("ready");
+            return;
+        }
+
         setStatus("identified");
         setLastResult(result);
-        logScan(result.student, detections[0].detection.score * 100);
-        toast.success(`✅ ${result.student.name} marked present`);
+        
+        // Update recently seen
+        setRecentSeen(prev => new Map(prev).set(studentId, now));
+
+        if (result.alreadyMarked) {
+            toast(`${result.student.name} is already marked`, { icon: 'ℹ️' });
+        } else {
+            logScan(result.student, detections[0].detection.score * 100);
+            toast.success(`✅ ${result.student.name} marked present`);
+        }
       } else {
         setStatus("unrecognized");
       }
@@ -99,14 +138,24 @@ export const LiveScan = () => {
     }
   };
 
-  const handleManualMark = (student) => {
-    setStatus("manual");
-    setLastResult({ student, time: new Date().toISOString() });
-    logScan(student, 100, true);
-    setShowManualSearch(false);
-    setSearchQuery("");
-    toast.success(`✅ ${student.name} marked manually`);
-    setTimeout(() => setStatus("ready"), 3000);
+  const handleManualMark = async (student) => {
+    setStatus("scanning");
+    try {
+        await attendanceAPI.markAttendance({ 
+            userId: student.id, 
+            confidence: 100 
+        });
+        setStatus("manual");
+        setLastResult({ student, time: new Date().toISOString() });
+        logScan(student, 100, true);
+        setShowManualSearch(false);
+        setSearchQuery("");
+        toast.success(`✅ ${student.name} marked manually`);
+    } catch (err) {
+        toast.error(err.response?.data?.message || "Failed to mark attendance");
+    } finally {
+        setTimeout(() => setStatus("ready"), 3000);
+    }
   };
 
   const logScan = (student, confidence, isManual = false) => {
@@ -205,17 +254,13 @@ export const LiveScan = () => {
                         
                         {searchQuery.length >= 2 && (
                             <div className="bg-background/80 border border-white/5 rounded-2xl overflow-hidden shadow-2xl divide-y divide-white/5 max-h-[180px] overflow-y-auto custom-scrollbar">
-                                {/* Simulated Search Results */}
-                                {[
-                                    { name: "Aryan Sharma", roll: "CS2101", avatar: "https://i.pravatar.cc/150?u=aryan" },
-                                    { name: "Priya Singh", roll: "CS2105", avatar: "https://i.pravatar.cc/150?u=priya" }
-                                ].filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.roll.toLowerCase().includes(searchQuery.toLowerCase())).map(student => (
+                                {allStudents.filter(s => s.name.toLowerCase().includes(searchQuery.toLowerCase()) || s.roll.toLowerCase().includes(searchQuery.toLowerCase())).map(student => (
                                     <button 
                                         key={student.roll}
                                         onClick={() => handleManualMark(student)}
                                         className="w-full flex items-center gap-4 px-5 py-3.5 hover:bg-primary/5 transition-colors group"
                                     >
-                                        <img src={student.avatar} className="w-10 h-10 rounded-xl object-cover border border-white/10" alt="" />
+                                        <img src={student.avatar || "https://i.pravatar.cc/150?u=" + student.id} className="w-10 h-10 rounded-xl object-cover border border-white/10" alt="" />
                                         <div className="text-left flex-1">
                                             <p className="text-sm font-bold text-white uppercase tracking-tight">{student.name}</p>
                                             <p className="text-xs text-gray-500 font-mono">{student.roll}</p>

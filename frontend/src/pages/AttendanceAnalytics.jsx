@@ -148,7 +148,7 @@ export const AttendanceAnalytics = () => {
              </div>
           ) : (
             <AttendanceCalculator
-              present={data?.subjects?.reduce((acc, sub) => acc + sub.attended, 0) || 0}
+              present={data?.subjects?.reduce((acc, sub) => acc + sub.present, 0) || 0}
               total={data?.subjects?.reduce((acc, sub) => acc + sub.total, 0) || 0}
             />
           )}

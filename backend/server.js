@@ -11,7 +11,11 @@ dotenv.config();
 const app = express();
 const server = http.createServer(app);
 
-connectDB();
+// Connect to MongoDB before starting server
+connectDB().catch(err => {
+  console.error('Failed to connect to MongoDB:', err.message);
+  process.exit(1);
+});
 
 const corsOptions = {
   origin: [

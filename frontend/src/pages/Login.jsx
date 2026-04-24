@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth";
 import { Mail, Lock, ArrowRight, Cpu, Eye, EyeOff } from "lucide-react";
 import { motion } from "framer-motion";
+import toast from "react-hot-toast";
 
 export const Login = () => {
   const [activeTab, setActiveTab] = useState("teacher");
@@ -20,18 +21,14 @@ export const Login = () => {
       const user = await login(email, password);
       navigate(user.role === "teacher" ? "/dashboard" : "/my-attendance");
     } catch (error) {
+      const message = error.response?.data?.message || "Login failed. Please check your connection.";
+      toast.error(message);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const demoFill = (role) => {
-    setActiveTab(role);
-    setEmail(
-      role === "teacher" ? "teacher@attendly.ai" : "student@attendly.ai",
-    );
-    setPassword("demo123");
-  };
+
 
   return (
     <div className="min-h-screen bg-transparent flex items-center justify-center p-4 relative overflow-hidden">
@@ -112,6 +109,7 @@ export const Login = () => {
                   <Mail size={16} className="text-gray-500" />
                 </div>
                 <input
+                  key={`email-${activeTab}`}
                   type="email"
                   required
                   value={email}
@@ -122,7 +120,7 @@ export const Login = () => {
                       ? "teacher@attendly.ai"
                       : "student@attendly.ai"
                   }
-                  autoComplete="email"
+                  autoComplete="off"
                 />
               </div>
             </div>
@@ -135,13 +133,14 @@ export const Login = () => {
                   <Lock size={16} className="text-gray-500" />
                 </div>
                 <input
+                  key={`password-${activeTab}`}
                   type={showPassword ? "text" : "password"}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   className="input-field pl-10 pr-11"
                   placeholder="••••••••"
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                 />
                 <button
                   type="button"
@@ -169,27 +168,7 @@ export const Login = () => {
               )}
             </button>
           </form>
-          <div className="mt-6 pt-5 border-t border-surfaceLight">
-            <p className="text-xs text-gray-500 text-center mb-3">
-              Try demo credentials
-            </p>
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={() => demoFill("teacher")}
-                className="flex-1 text-xs py-2 border border-primary/30 text-primary rounded-lg hover:bg-primary/10 transition-colors"
-              >
-                Demo Teacher
-              </button>
-              <button
-                type="button"
-                onClick={() => demoFill("student")}
-                className="flex-1 text-xs py-2 border border-blue-400/30 text-blue-400 rounded-lg hover:bg-blue-500/10 transition-colors"
-              >
-                Demo Student
-              </button>
-            </div>
-          </div>
+
         </div>
 
         <p className="text-center text-xs text-gray-600 mt-5">

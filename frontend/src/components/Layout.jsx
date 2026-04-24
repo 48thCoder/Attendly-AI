@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Outlet, NavLink, useNavigate } from "react-router-dom";
+import { Outlet, NavLink, useNavigate, useLocation } from "react-router-dom";
 import {
   LayoutDashboard,
   Camera,
@@ -15,6 +15,7 @@ import {
   BookOpen,
   LineChart,
   Bell,
+  ShieldAlert,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth";
 import { motion, AnimatePresence } from "framer-motion";
@@ -38,6 +39,7 @@ export const Layout = () => {
   const [showNotifications, setShowNotifications] = useState(false);
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const notificationRef = useRef(null);
 
   useEffect(() => {
@@ -124,6 +126,27 @@ export const Layout = () => {
   const [notifications, setNotifications] = useState(
     user?.role === "teacher" ? teacherNotifications : studentNotifications,
   );
+
+  useEffect(() => {
+    import("socket.io-client").then(({ io }) => {
+      const socketUrl = import.meta.env.VITE_API_URL 
+        ? import.meta.env.VITE_API_URL.replace('/api', '') 
+        : 'http://localhost:5000';
+      const socket = io(socketUrl);
+
+      socket.on('new_notification', (data) => {
+        // Only show relevant notifications
+        if (data.recipientRole === user?.role) {
+          if (data.recipientRole === 'student' && data.recipientId !== user?.id) {
+            return;
+          }
+          setNotifications(prev => [data, ...prev]);
+        }
+      });
+
+      return () => socket.disconnect();
+    });
+  }, [user]);
 
   const navItems = user?.role === "teacher" ? teacherNav : studentNav;
 
@@ -226,8 +249,12 @@ export const Layout = () => {
         </nav>
         <div className="p-4 border-t border-surfaceLight flex-shrink-0">
           <div className="flex items-center gap-3 mb-3 px-1">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/40 to-secondary/40 flex items-center justify-center text-white font-playfair text-xs font-bold border border-primary/20 flex-shrink-0">
-              {initials}
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/40 to-secondary/40 flex items-center justify-center text-white font-playfair text-xs font-bold border border-primary/20 flex-shrink-0 overflow-hidden">
+              {user?.avatar ? (
+                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+              ) : (
+                initials
+              )}
             </div>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-white truncate leading-tight">
@@ -334,14 +361,43 @@ export const Layout = () => {
 
             <div className="hidden sm:block text-right ml-2 border-l border-surfaceLight pl-4">
               <p className="text-sm font-medium text-white">{user?.name}</p>
-              <p className="text-xs text-gray-500 capitalize">{user?.role}</p>
+              <p className="text-xs text-gray-500 capitalize">{user?.role === 'teacher' ? user?.department : user?.role}</p>
             </div>
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/40 to-secondary/40 flex items-center justify-center text-white font-playfair text-xs font-bold border border-primary/20">
-              {initials}
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-primary/40 to-secondary/40 flex items-center justify-center text-white font-playfair text-xs font-bold border border-primary/20 overflow-hidden">
+              {user?.avatar ? (
+                <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+              ) : (
+                initials
+              )}
             </div>
           </div>
         </header>
         <main className="flex-1 overflow-x-hidden overflow-y-auto p-4 lg:p-6">
+          {user?.mustChangePassword && location.pathname !== '/settings' && (
+            <motion.div 
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              className="mb-6 overflow-hidden"
+            >
+              <div className="bg-amber-400/10 border border-amber-400/20 rounded-2xl p-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-amber-400/20 flex items-center justify-center text-amber-400 flex-shrink-0">
+                    <ShieldAlert size={20} />
+                  </div>
+                  <div>
+                    <h5 className="text-sm font-bold text-white text-left">Action Required: Update Password</h5>
+                    <p className="text-xs text-gray-400 mt-0.5 text-left">You are using a temporary password. Please update it for better security.</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => navigate('/settings')}
+                  className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-background font-bold text-xs rounded-xl transition-colors whitespace-nowrap"
+                >
+                  Change Now
+                </button>
+              </div>
+            </motion.div>
+          )}
           <Outlet />
         </main>
       </div>
